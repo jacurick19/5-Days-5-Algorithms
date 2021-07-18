@@ -35,39 +35,47 @@ NONPOS_ERRMESS = 'This subroutine can only compute continued fractions of '\
 NO_PLAINTEXT_ERRMESS = 'This fraction does not correspond to any sequence of '\
                        'plaintext bytes.'
 
+DEFAULT_KEY = Fraction(17/9)
 
-def encrypt_cont_frac(plaintext):
+
+def encrypt_cont_frac(plaintext, key=DEFAULT_KEY):
     '''
     Arguments:
         plaintext (bytes)
+        key (Fraction)
     Returns:
         ciphertext (Fraction)
     Requires:
         len(plaintext) > 0
     '''
     assert plaintext, "This algorithm cannot encrypt an empty string"
-    first_byte, the_rest = plaintext[0], plaintext[:-1]
-    leading_int = Fraction(int.from_bytes(first_byte, 'little', 'unsigned'))
-    if the_rest:
-        retval = leading_int + 1/encrypt_cont_frac(the_rest)
-    else:
-        retval = leading_int
-    return retval
+
+    the_rest, last_byte = plaintext[:-1], plaintext[-1:]
+    trailing_int = Fraction(int.from_bytes(last_byte, 'little', signed=False))
+    ciphertext = 2 + trailing_int
+    while the_rest:
+        the_rest, last_byte = the_rest[:-1], the_rest[-1:]
+        trailing_int = Fraction(int.from_bytes(last_byte, 'little', signed=False))
+        ciphertext = 2 + trailing_int + 1/ciphertext
+    ciphertext += key
+    return ciphertext
+        
 
 
-def decrypt_cont_frac(ciphertext):
+def decrypt_cont_frac(ciphertext, key=DEFAULT_KEY):
     '''
     Arguments:
         ciphertext (Fraction)
+        key (Fraction)
     Returns:
         plaintext (bytes)
     Requires:
-        ciphertext is > 1, and all coefficients in its canonical continued
+        ciphertext-key is > 1, and all coefficients in its canonical continued
             fraction representation are >= 2
     '''
-    the_cont_frac = cont_frac(ciphertext)
+    the_cont_frac = cont_frac(ciphertext-key)
     assert all(x >= 2 for x in the_cont_frac), NO_PLAINTEXT_ERRMESS
-    return b''.join((x-2).to_bytes(1, 'little', 'unsigned') for x in ciphertext)
+    return b''.join((x-2).to_bytes(1, 'little', signed=False) for x in the_cont_frac)
 
 
 def cont_frac(x):
@@ -107,16 +115,16 @@ class TestContFrac(TestCase):
         l = [(Fraction(7, 3), [2, 3]),
              (Fraction(5, 2), [2, 2]),
              (Fraction(1, 2), [0, 2]),
-             (Fraction(5, 8), [0, 1, 1, 1, 1])]
+             (Fraction(5, 8), [0, 1, 1, 1, 2])]
         for t in l:
             ans = cont_frac(t[0])
-            exp = l[1]
+            exp = t[1]
             self.assertEqual(ans, exp, t[0])
 
     def test_failure(self):
         l = (Fraction(x)/120 for x in range(-240, 1))
         for t in l:
-            with self.assertRaises(NONPOS_ERRMESS):
+            with self.assertRaises(Exception, msg=NONPOS_ERRMESS):
                 _ = cont_frac(t)
 
 
@@ -125,11 +133,11 @@ class TestEncrypt(TestCase):
     # pylint: disable=missing-docstring
 
     def test_easy(self):
-        l = [(Fraction(7, 3), b'\x02\x03'),
-             (Fraction(5, 2), b'\x02\x02')]
+        l = [(Fraction(21, 5), b'\x02\x03'),
+             (Fraction(17, 4), b'\x02\x02')]
         for t in l:
-            ans = decrypt_cont_frac(t[0])
-            exp = t[1]
+            ans = encrypt_cont_frac(t[1])
+            exp = t[0]+DEFAULT_KEY
             self.assertEqual(ans, exp, t[0])
 
 
@@ -138,19 +146,19 @@ class TestDecrypt(TestCase):
     # pylint: disable=missing-docstring
 
     def test_easy(self):
-        l = [(Fraction(7, 3), b'\x02\x03'),
-             (Fraction(5, 2), b'\x02\x02')]
+        l = [(Fraction(7, 3), b'\x00\x01'),
+             (Fraction(5, 2), b'\x00\x00')]
         for t in l:
-            ans = decrypt_cont_frac(t[0])
-            exp = t[0]
+            ans = decrypt_cont_frac(t[0]+DEFAULT_KEY)
+            exp = t[1]
             self.assertEqual(ans, exp, t[0])
 
     def test_impossible(self):
-        with self.assertRaises(NONPOS_ERRMESS):
+        with self.assertRaises(Exception, msg=NONPOS_ERRMESS):
             _ = decrypt_cont_frac(Fraction(0))
-        with self.assertRaises(NONPOS_ERRMESS):
+        with self.assertRaises(Exception, msg=NONPOS_ERRMESS):
             _ = decrypt_cont_frac(Fraction(-1))
-        with self.assertRaises(NO_PLAINTEXT_ERRMESS):
+        with self.assertRaises(Exception, msg=NO_PLAINTEXT_ERRMESS):
             _ = decrypt_cont_frac(Fraction(5, 8))
 
 
@@ -160,7 +168,7 @@ class TestTogether(TestCase):
 
     def test_fuzz(self):
         for i in range(0, 50):
-            plaintext = get_random_bytes(length=10**6, seedval=i)
+            plaintext = get_random_bytes(length=10**2, seedval=i)
             ciphertext = encrypt_cont_frac(plaintext)
             new_plaintext = decrypt_cont_frac(ciphertext)
             self.assertEqual(plaintext, new_plaintext)
