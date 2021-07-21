@@ -1,5 +1,5 @@
 # 36Days36Algorithms
-Will be releasing a novel and unpublished encryption algorithm each day for the next 36 days.
+The goal is to release a novel and unpublished encryption algorithm each day for the next 36 days.
 
 Decryption algorithms will generally be left as an exercise to the reader.
 
