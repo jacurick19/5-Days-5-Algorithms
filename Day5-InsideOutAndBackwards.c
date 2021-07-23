@@ -1,6 +1,8 @@
 /*
 *   Jacob Urick
 *   urick.9@osu.edu
+*   This will flip bits in key[i mod |key|] bytes before skipping n bytes, where i ranges from 0 to |key| - 1.
+*   The bytes order is flipped before returning.
 */
 #include <stdio.h>
 #include <string.h>
